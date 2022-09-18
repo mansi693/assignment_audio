@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Audio Recorder</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/materialize/0.100.2/css/materialize.min.css">
+</head>
+<body>
+  <nav>
+    <div class="nav-wrapper">
+      <a class="brand-logo center">Audio Recorder</a>   
+    
+    </div>
+  </nav>
+  <div>
+    <div>
+      <section class="main-controls">
+        <canvas class="visualizer" width= "800px" height="60px"></canvas>
+        <div id="buttons">
+            <a onclick="captureScreenWithAudio()"class="waves-effect waves-light btn"><i class="material-icons left"></i>Start</a>
+            <a onclick="stop()"class="waves-effect waves-light btn"><i class="material-icons right"></i>Stop</a>
+        </div>
+      </section>
+      <section class="sound-clips"></section>
+    </div>
+  </div>
+  <ul></ul>
+
+  <script>
+    const electron = require('electron');
+    const dialogs = require('dialogs');
+
+    const {ipcRenderer} = electron;
+    const ul = document.querySelector('ul');
+
+    ipcRenderer.on('item:add', function(e, item){
+      ul.className = 'collection';
+      const li = document.createElement('li');
+      li.className = 'collection-item';
+      const itemText = document.createTextNode(item);
+
+      li.appendChild(itemText);
+      ul.appendChild(li);
+    });
+
+    ipcRenderer.on('item:clear', function(){
+      ul.className = '';
+      ul.innerHTML = '';
+    });
+
+    ul.addEventListener('dblclick', removeItem);
+
+    function removeItem(e){
+      event.target.remove();
+      if(ul.children.length == 0){
+        ul.className = '';
+      }
+    }
+
+    let recorder;
+    let blobs = [];
+
+    function stop() {
+      mediaRecorder.stop();
+      console.log(mediaRecorder.state);
+      console.log("recorder stopped"); 
+    }
+        
+    function captureScreenWithAudio() {
+      var soundClips = document.querySelector('.sound-clips');
+      canvas = document.querySelector('.visualizer');
+
+      if (navigator.mediaDevices) {
+        console.log('getUserMedia supported.');
+
+        var constraints = { audio: true };
+        var chunks = [];
+
+        navigator.mediaDevices.getUserMedia(constraints)
+        .then(function(stream) {
+
+            mediaRecorder = new MediaRecorder(stream);
+            visualize(stream);
+
+            mediaRecorder.start();
+            const clipContainer = document.createElement('article');
+            const clipContainerText = document.createElement('p');
+            clipContainerText.className='chip';
+            clipContainerText.innerText='Recording Started'
+            console.log(mediaRecorder.state);
+            console.log("Recording Started");
+            clipContainer.appendChild(clipContainerText);
+            soundClips.appendChild(clipContainer);
+
+            mediaRecorder.onstop = function(e) {
+              console.log("data available after MediaRecorder.stop() called.");
+              var clipLabel = document.createElement('p');
+              var audio = document.createElement('audio');
+
+              var deleteButton = document.createElement('button');
+
+              clipContainer.classList.add('clip');
+              audio.setAttribute('controls', '');
+              deleteButton.innerHTML = "Delete";
+              deleteButton.className='waves-effect waves-light btn'
+              // clipLabel.innerHTML = clipName;
+              clipContainer.appendChild(audio);
+              clipContainer.appendChild(clipLabel);
+              clipContainer.appendChild(deleteButton);
+              clipContainerText.innerText='Recording Stopped..!'
+              soundClips.appendChild(clipContainer);
+              audio.controls = true;
+              var blob = new Blob(chunks, { 'type' : 'audio/ogg; codecs=opus' });
+              chunks = [];
+              var audioURL = URL.createObjectURL(blob);
+              audio.src = audioURL;
+              console.log(audioURL)
+              console.log(audio)
+              console.log("recorder stopped");
+
+              deleteButton.onclick = function(e) {
+                evtTgt = e.target;
+                evtTgt.parentNode.parentNode.removeChild(evtTgt.parentNode);
+              }
+            }
+
+            mediaRecorder.ondataavailable = function(e) {
+              chunks.push(e.data);
+            }
+        })
+        .catch(function(err) {
+          console.log('Listen Kartik, error occurred: ' + err);
+        })
+      }
+
+    }
+      
+    function visualize(stream) {
+      var audioCtx = new (window.AudioContext || webkitAudioContext)();
+      var canvasCtx = canvas.getContext("2d");
+      var source = audioCtx.createMediaStreamSource(stream);
+
+      var analyser = audioCtx.createAnalyser();
+      analyser.fftSize = 2048;
+      var bufferLength = analyser.frequencyBinCount;
+      var dataArray = new Uint8Array(bufferLength);
+
+      source.connect(analyser);
+      //analyser.connect(audioCtx.destination);
+
+      draw()
+
+      function draw() {
+      
+        WIDTH = canvas.width
+        HEIGHT = canvas.height;
+        requestAnimationFrame(draw);
+        analyser.getByteTimeDomainData(dataArray);
+         
+        var grd =  canvasCtx.createLinearGradient(0, 0, canvas.width, canvas.height);
+        grd.addColorStop(0, '#ffd86f');   
+        grd.addColorStop(1, '#fc6262');
+        canvasCtx.fillStyle = grd;
+        // canvasCtx.fillStyle = 'rgb(200, 200, 200)';
+        canvasCtx.fillRect(0, 0, WIDTH, HEIGHT);
+
+        canvasCtx.lineWidth = 2.5;
+        canvasCtx.strokeStyle = 'rgb(255,255,255)';
+
+        canvasCtx.beginPath();
+
+        var sliceWidth = WIDTH * 2.0 / bufferLength;
+        var x = 0;
+ 
+        for(var i = 0; i < bufferLength; i++) {
+    
+          var v = dataArray[i] / 128.0;
+          var y = v * HEIGHT/2;
+
+          if(i === 0) {
+            canvasCtx.moveTo(x, y);
+          } else {
+            canvasCtx.lineTo(x, y);
+          }
+
+          x += sliceWidth;
+        }
+
+        canvasCtx.lineTo(canvas.width, canvas.height/2);
+        canvasCtx.stroke();
+
+      }
+    }
+
+
+  </script>
+</body>
+</html>
